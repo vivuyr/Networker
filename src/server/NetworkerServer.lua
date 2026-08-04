@@ -5,10 +5,12 @@ local Network = {
 	RemoteFunctions = {},
 	Requests = {},
 	Middleware = require(script.Parent.Middleware),
-	GlobalMiddlewares = {},
+	GlobalMiddlewareDefinitions = {},
+	Logger = require(ReplicatedStorage.Shared.Logger),
 	Settings = {
-		FromClientToServer = false,
+		ClientToServerFunction = false,
 		FirstGlobalMiddleware = true,
+		Logging = false,
 	},
 }
 
@@ -38,62 +40,146 @@ type RequestData = {
 
 type Request = { [string]: RequestData }
 
-local function globalMiddlewares(name, remotes, t, context, player, ...)
-	local isArray = #remotes[name].Global.Middlewares > 0
+type Middleware = { Global: { UseAll: boolean?, Disable: { string? | number? }? }?, Middlewares: {}? } | {}
+
+local function createGlobalMiddlewares()
+	local globals = {}
+	for name, definition in pairs(Network.GlobalMiddlewareDefinitions) do
+		globals[name] = definition.Factory(Network.Middleware, table.unpack(definition.Args))
+	end
+	return globals
+end
+
+local function globalMiddlewares(
+	name: string,
+	middlewares: Middleware,
+	t: string,
+	context: Context,
+	player: Player,
+	...: any
+)
+	local Remotes
+	if t == "Remote" then
+		Remotes = Network.Remotes
+	elseif t == "RemoteFunction" then
+		Remotes = Network.RemoteFunctions
+	elseif t == "Request" then
+		Remotes = Network.Requests
+	end
+	local remote = Remotes[name]
+
+	local isArray = #remote.GlobalMiddlewares > 0
 	local pair
 	if isArray then
 		pair = ipairs
 	else
 		pair = pairs
 	end
-	for _, global in pair(remotes[name].Global.Middlewares) do
+	local globals = middlewares["Global"]
+
+	for globalName, global in pair(remote.GlobalMiddlewares) do
+		if global and globals and globals.Disable then
+			if type(globalName) == "number" then
+				local skip = false
+
+				for _, v in pairs(globals.Disable) do
+					if v == globalName then
+						skip = true
+						break
+					end
+				end
+
+				if skip then
+					continue
+				end
+			else
+				if globals.Disable[globalName] then
+					continue
+				end
+			end
+		end
 		local ok, middleName = global(context, player, ...)
 
 		if not ok then
 			if not middleName then
 				middleName = ""
 			end
-			warn(("[Networker] %s's (%s) GlobalMiddleware (%s) failed"):format(name, t, middleName))
+			Network.Logger.Warn(
+				("[Networker][%s] %s's (%s) GlobalMiddleware (%s) failed"):format(player.Name, name, t, middleName),
+				Network.Settings.Logging
+			)
 			return
 		end
 	end
+	return true
 end
 
-local function normalMiddlewares(name, t, middlewares, context, player, ...)
-	for _, middleware in ipairs(middlewares) do
+local function normalMiddlewares(
+	name: string,
+	middlewares: Middleware,
+	t: string,
+	context: Context,
+	player: Player,
+	...: any
+)
+	local middle = middlewares["Middlewares"] or middlewares
+	for _, middleware in ipairs(middle) do
 		local ok, middleName = middleware(context, player, ...)
 
 		if not ok then
 			if not middleName then
 				middleName = ""
 			end
-			warn(("[Networker] %s's (%s) middleware (%s) failed"):format(name, t, middleName))
+			Network.Logger.Warn(
+				("[Networker][%s] %s's (%s) middleware (%s) failed"):format(player.Name, name, t, middleName),
+				Network.Settings.Logging
+			)
 			return
 		end
 	end
+	return true
 end
 
-local function RunMiddlewares(remote: Remote | Request, t: string, player: Player, middlewares: {}, ...: any): Context?
+local function RunMiddlewares(
+	remote: Remote | Request,
+	t: string,
+	player: Player,
+	middlewares: Middleware,
+	...: any
+): Context?
 	local name = remote.Name
 	local context: Context = {
 		Data = {},
 		StartTime = os.clock(),
 	}
-	local remotes
-	if t == "RemoteEvent" then
-		remotes = Network.Remotes
-	elseif t == "RemoteFunction" then
-		remotes = Network.RemoteFunctions
-	elseif t == "Request" then
-		remotes = Network.Requests
+	local globals = middlewares["Global"]
+	if globals then
+		if globals.UseAll == false then
+			local ok = normalMiddlewares(name, middlewares, t, context, player, ...)
+			if not ok then
+				return
+			end
+			return context
+		end
 	end
-	if remotes[name].Global.GlobalMiddleware then
-		if Network.Settings.FirstGlobalMiddleware then
-			globalMiddlewares(name, remotes, t, context, player, ...)
-			normalMiddlewares(name, t, middlewares, context, player, ...)
-		else
-			normalMiddlewares(name, t, middlewares, context, player, ...)
-			globalMiddlewares(name, remotes, t, context, player, ...)
+	if Network.Settings.FirstGlobalMiddleware then
+		local success = globalMiddlewares(name, middlewares, t, context, player, ...)
+		if not success then
+			return
+		end
+		local ok = normalMiddlewares(name, middlewares, t, context, player, ...)
+		if not ok then
+			return
+		end
+	else
+		local ok = normalMiddlewares(name, middlewares, t, context, player, ...)
+		if not ok then
+			return
+		end
+
+		local success = globalMiddlewares(name, middlewares, t, context, player, ...)
+		if not success then
+			return
 		end
 	end
 	return context
@@ -102,7 +188,7 @@ end
 local function RunCallback(
 	remote: Remote | Request,
 	player: Player,
-	middlewares: {},
+	middlewares: Middleware,
 	callback: Callback,
 	errorInfo: string?,
 	...: any
@@ -120,7 +206,10 @@ local function RunCallback(
 	local success, result = pcall(callback, context, player, ...)
 	if not success then
 		result = errorInfo
-		warn(("[Networker] %s (%s) failed:\n%s"):format(name, Type, result))
+		Network.Logger.Warn(
+			("[Networker][%s] %s (%s) failed:\n%s"):format(player.Name, name, Type, result),
+			Network.Settings.Logging
+		)
 		return false, nil
 	end
 	return success, result
@@ -197,64 +286,66 @@ function Network:IsRegistered(name, t)
 	return true
 end
 
-function Network:Register(name: string, middlewares: {}, callback: Callback): ()
+function Network:Register(name: string, middlewares: Middleware, callback: Callback): ()
 	if self.Remotes[name] then
-		warn(("[Networker] Remote '%s' already exists."):format(name))
+		self.Logger.Warn(("[Networker] Remote '%s' already exists."):format(name), Network.Settings.Logging)
 		return
 	end
 	local remote = Instance.new("RemoteEvent")
 	remote.Name = name
 	remote.Parent = References.EventsFolder
-	local global = self.GlobalMiddlewares
-	self.Remotes[name] = { Remote = remote, Global = { GlobalMiddleware = true, Middlewares = global } }
+	local global = createGlobalMiddlewares()
+	self.Remotes[name] = { Remote = remote, GlobalMiddlewares = global }
 	remote.OnServerEvent:Connect(function(player: Player, ...: any)
 		local _success, _result = RunCallback(remote, player, middlewares, callback, nil, ...)
 	end)
 end
 
 function Network:FireClient(player: Player, name: string, ...: any): ()
-	local remote = self.Remotes[name].Remote
+	local data = self.Remotes[name]
+	local remote = data and data.Remote
 
 	if not remote then
 		remote = References.EventsFolder:FindFirstChild(name)
 		if not remote then
-			warn(("[Networker] Remote '%s' not exists."):format(name))
+			self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), Network.Settings.Logging)
 			return
 		end
-		local global = self.GlobalMiddlewares
-		self.Remotes[name] = { Remote = remote, Global = { GlobalMiddleware = true, Middlewares = global } }
+		local global = createGlobalMiddlewares()
+		self.Remotes[name] = { Remote = remote, GlobalMiddlewares = global }
 	end
 
 	remote:FireClient(player, ...)
 end
 
 function Network:FireAllClients(name: string, ...: any): ()
-	local remote: RemoteEvent = self.Remotes[name].Remote
+	local data = self.Remotes[name]
+	local remote = data and data.Remote
 
 	if not remote then
 		remote = References.EventsFolder:FindFirstChild(name)
 		if not remote then
-			warn(("[Networker] Remote '%s' not exists."):format(name))
+			self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), Network.Settings.Logging)
 			return
 		end
-		local global = self.GlobalMiddlewares
-		self.Remotes[name] = { Remote = remote, Global = { GlobalMiddleware = true, Middlewares = global } }
+		local global = createGlobalMiddlewares()
+		self.Remotes[name] = { Remote = remote, GlobalMiddlewares = global }
 	end
 
 	remote:FireAllClients(...)
 end
 
-function Network:RegisterFunction(name: string, middlewares: {}, callback: Callback): ()
+function Network:RegisterFunction(name: string, middlewares: Middleware, callback: Callback): ()
 	if self.RemoteFunctions[name] then
-		warn(("[Networker] RemoteFunction '%s' already exists."):format(name))
+		self.Logger.Warn(("[Networker] RemoteFunction '%s' already exists."):format(name), self.Settings.Logging)
 		return
 	end
 	local remoteFunction = Instance.new("RemoteFunction")
 	remoteFunction.Name = name
 	remoteFunction.Parent = References.FunctionsFolder
+	local global = createGlobalMiddlewares()
 
-	local global = self.GlobalMiddlewares
-	self.RemoteFunctions[name] = { Remote = remoteFunction, Global = { GlobalMiddleware = true, Middlewares = global } }
+	self.RemoteFunctions[name] = { Remote = remoteFunction, GlobalMiddlewares = global }
 
 	remoteFunction.OnServerInvoke = function(player: Player, ...: any)
 		local _success, result = RunCallback(remoteFunction, player, middlewares, callback, nil, ...)
@@ -264,15 +355,16 @@ function Network:RegisterFunction(name: string, middlewares: {}, callback: Callb
 end
 
 function Network:InvokeClient(player: Player, name: string, ...: any): any
-	if not self.Settings.FromClientToServer then
+	if not self.Settings.ClientToServerFunction then
 		warn("The Client to Server option is disabled. Consider enabling it as it is dangerous!!!")
 		return
 	end
-	local remoteFunction: RemoteFunction = self.RemoteFunctions[name].Remote
+	local data = self.RemoteFunctions[name]
+	local remoteFunction = data and data.Remote
 	if not remoteFunction then
 		remoteFunction = References.EventsFolder:FindFirstChild(name)
 		if not remoteFunction then
-			warn(("[Networker] Function '%s' not exists."):format(name))
+			self.Logger.Warn(("[Networker] Function '%s' not exists."):format(name), self.Settings.Logging)
 			return
 		end
 	end
@@ -280,22 +372,22 @@ function Network:InvokeClient(player: Player, name: string, ...: any): any
 	return remoteFunction:InvokeClient(player, ...)
 end
 
-function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: {}, callback: Callback): ()
+function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: Middleware, callback: Callback): ()
 	if self.Requests[name] then
-		warn(("[Networker] Request '%s' already exists."):format(name))
+		self.Logger.Warn(("[Networker] Request '%s' already exists."):format(name), self.Settings.Logging)
 		return
 	end
-	local global = self.GlobalMiddlewares
+	local global = createGlobalMiddlewares()
 	self.Requests[name] = {
 		Name = name,
-		Global = { GlobalMiddleware = true, Middlewares = global },
+		GlobalMiddlewares = global,
 		Middlewares = middlewares,
 		Callback = callback,
 		Error = errorInfo,
 	}
 end
 
-function Network:Destroy(name, t)
+function Network:Destroy(name: string, t: string)
 	local Remotes
 	local Folder
 	if t == "Remote" then
@@ -307,7 +399,8 @@ function Network:Destroy(name, t)
 	elseif t == "Request" then
 		Remotes = self.Requests
 	end
-	local remote = Remotes[name].Remote
+	local data = Remotes[name]
+	local remote = data and data.Remote
 	if not remote then
 		return
 	end
@@ -316,7 +409,6 @@ function Network:Destroy(name, t)
 		local event = Folder:FindFirstChild(name)
 		event:Destroy()
 	end
-	print(("%s (%s) deleted"):format(name, t))
+	self.Logger.Print(("%s (%s) deleted"):format(name, t), self.Settings.Logging)
 end
-
 return Network

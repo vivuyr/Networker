@@ -3,6 +3,10 @@ local Network = {
 	Remotes = {},
 	RemoteFunctions = {},
 	RequestsResults = {},
+	Logger = require(ReplicatedStorage.Shared.Logger),
+	Settings = {
+		Logging = false,
+	},
 }
 
 local References = {
@@ -21,29 +25,29 @@ type Callback = (any) -> any
 function Network:Init(): boolean
 	References.RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
 	if not References.RemotesFolder then
-		warn("[Networker] RemotesFolder not exist")
+		self.Logger.Warn("[Networker] RemotesFolder not exist", self.Settings.Logging)
 		return false
 	end
 
 	References.EventsFolder = References.RemotesFolder:FindFirstChild("Events")
-	if not References.RemotesFolder then
-		warn("[Networker] EventsFolder not exist")
+	if not References.EventsFolder then
+		self.Logger.Warn("[Networker] EventsFolder not exist", self.Settings.Logging)
 		return false
 	end
 
 	References.FunctionsFolder = References.RemotesFolder:FindFirstChild("Functions")
 	if not References.FunctionsFolder then
-		warn("[Networker] FunctionsFolder not exist")
+		self.Logger.Warn("[Networker] FunctionsFolder not exist", self.Settings.Logging)
 		return false
 	end
 	References.RequestsFolder = References.RemotesFolder:FindFirstChild("Requests")
 	if not References.RequestsFolder then
-		warn("[Networker] RequestsFolder not exist")
+		self.Logger.Warn("[Networker] RequestsFolder not exist", self.Settings.Logging)
 		return false
 	end
 	References.RequestEvent = References.RequestsFolder:FindFirstChild("RequestEvent")
 	if not References.RequestEvent then
-		warn("[Networker] RequestEvent not exist")
+		self.Logger.Warn("[Networker] RequestEvent not exist", self.Settings.Logging)
 		return false
 	end
 
@@ -71,7 +75,7 @@ end
 function Network:On(name: string, callback: Callback): ()
 	local remote = References.EventsFolder:FindFirstChild(name)
 	if not remote then
-		warn("[Networker] Remote '%s' not exists.")
+		self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), self.Settings.Logging)
 		return
 	end
 	self.Remotes[name] = remote
@@ -79,7 +83,7 @@ function Network:On(name: string, callback: Callback): ()
 		local success, err = pcall(callback, ...)
 
 		if not success then
-			warn(("[Networker] %s failed:\n%s"):format(name, err))
+			self.Logger.Warn(("[Networker] %s failed:\n%s"):format(name, err), self.Settings.Logging)
 			return
 		end
 	end)
@@ -88,7 +92,7 @@ end
 function Network:FireServer(name: string, ...: any): ()
 	local remote = References.EventsFolder:FindFirstChild(name)
 	if not remote then
-		warn(("[Networker] Remote '%s' not exists."):format(name))
+		self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), self.Settings.Logging)
 		return
 	end
 	self.Remotes[name] = remote
@@ -99,7 +103,7 @@ end
 function Network:InvokeServer(name: string, ...: any): any
 	local remoteFunction = References.FunctionsFolder:FindFirstChild(name)
 	if not remoteFunction then
-		warn(("[Networker] Remote '%s' not exists."):format(name))
+		self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), self.Settings.Logging)
 		return
 	end
 	self.RemoteFunctions[name] = remoteFunction
@@ -109,7 +113,7 @@ end
 function Network:OnServerInvoke(name: string, callback: Callback): ()
 	local remoteFunction = References.FunctionsFolder:FindFirstChild(name)
 	if not remoteFunction then
-		warn(("[Networker] Remote '%s' not exists."):format(name))
+		self.Logger.Warn(("[Networker] Remote '%s' not exists."):format(name), self.Settings.Logging)
 		return
 	end
 	self.RemoteFunctions[name] = remoteFunction
@@ -138,7 +142,7 @@ function Network:Request(name: string, counter: number?, ...: any): any
 	References.RequestEvent:FireServer(name, requestId, ...)
 	local success = bindable.Event:Wait()
 	if not success then
-		warn(("[Networker] Request %s timeout"):format(name))
+		self.Logger.Warn(("[Networker] Request %s timeout"):format(name), self.Settings.Logging)
 		return
 	end
 	local result = self.RequestsResults[requestId]
@@ -147,9 +151,9 @@ function Network:Request(name: string, counter: number?, ...: any): any
 	if result.Success then
 		return data
 	end
-	warn(("[Networker] Request %s is nil"):format(name))
+	self.Logger.Warn(("[Networker] Request %s is nil"):format(name), self.Settings.Logging)
 	if data then
-		warn(("[Networker] Request %s: %s"):format(name, data))
+		self.Logger.Warn(("[Networker] Request %s: %s"):format(name, data), self.Settings.Logging)
 	end
 	return
 end

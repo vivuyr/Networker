@@ -1,5 +1,7 @@
 local Players = game:GetService("Players")
-local Middleware = {}
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Logger = require(ReplicatedStorage.Shared.Logger)
+local Middleware = { Settings = { Logging = nil } }
 
 local Connections = {
 	RateLimit = {},
@@ -24,7 +26,7 @@ function Middleware.Start(): ()
 			for _, connection in pairs(data) do
 				for _, findedPlayer in pairs(connection) do
 					if findedPlayer == leavingPlayer then
-						findedPlayer = nil
+						connection[leavingPlayer] = nil
 					end
 				end
 			end
@@ -32,7 +34,7 @@ function Middleware.Start(): ()
 	end)
 end
 
-function Middleware.RateLimit(limit: number): (Context, Player, any) -> (boolean, string?)
+function Middleware:RateLimit(limit: number): (Context, Player, any) -> (boolean, string?)
 	local id = Ids.RateLimit
 	Ids.RateLimit += 1
 	Connections.RateLimit[id] = {}
@@ -46,14 +48,15 @@ function Middleware.RateLimit(limit: number): (Context, Player, any) -> (boolean
 			RateConnection[player] = now + minDelay
 			return true, "RateLimit"
 		end
-		warn(("%s is rate limited"):format(player.Name))
+		Logger.Warn(("%s is rate limited"):format(player.Name), self.Settings.Logging)
 		return false, "RateLimit"
 	end
 end
 
-function Middleware.Cooldown(cooldown: number): (Context, Player, any) -> (boolean, string?)
+function Middleware:Cooldown(cooldown: number): (Context, Player, any) -> (boolean, string?)
 	local id = Ids.Cooldown
-	Ids.RateLimit += 1
+	Ids.Cooldown += 1
+	Connections.Cooldown[id] = {}
 	local CooldownConnection = Connections.Cooldown[id]
 	return function(_context: Context, player: Player, ...: any)
 		local now = os.clock()
@@ -61,16 +64,16 @@ function Middleware.Cooldown(cooldown: number): (Context, Player, any) -> (boole
 			CooldownConnection[player] = now + cooldown
 			return true, "Cooldown"
 		end
-		warn(("%s on cooldown"):format(player.Name))
+		Logger.Warn(("%s on cooldown"):format(player.Name), self.Settings.Logging)
 		return false, "Cooldown"
 	end
 end
 
-function Middleware.Resolve(callback: Callback, container: string): (Context, Player, any) -> (boolean, string?)
+function Middleware:Resolve(callback: Callback, container: string): (Context, Player, any) -> (boolean, string?)
 	return function(context, player, ...)
 		local data = callback(context, player, ...)
 		if not data then
-			warn(("%s data not find"):format(player.Name))
+			Logger.Warn(("%s data not find"):format(player.Name), self.Settings.Logging)
 			return false, "Resolve"
 		end
 		context.Data[container] = data
@@ -78,12 +81,12 @@ function Middleware.Resolve(callback: Callback, container: string): (Context, Pl
 	end
 end
 
-function Middleware.Types(argsTypes: {}): (Context, Player, any) -> (boolean, string?)
-	return function(_context, _player, ...)
+function Middleware:Types(argsTypes: {}): (Context, Player, any) -> (boolean, string?)
+	return function(_context, player, ...)
 		local args = { ... }
 		for i, arg in ipairs(args) do
 			if type(args[i]) ~= argsTypes[i] then
-				warn(("Type %s is wrong"):format(i))
+				Logger.Warn(("%s type %s is wrong"):format(player.Name, i), self.Settings.Logging)
 				return false, "Types"
 			end
 		end
@@ -91,25 +94,18 @@ function Middleware.Types(argsTypes: {}): (Context, Player, any) -> (boolean, st
 	end
 end
 
-function Middleware.Range(min: number, max: number): (Context, Player, any) -> (boolean, string?)
-	return function(_context, _player, ...: number)
-		local number = math.clamp(..., min, max)
-		if number == max or number == min then
-			warn("Number is higher or lower than can be")
+function Middleware:Range(min: number, max: number): (Context, Player, any) -> (boolean, string?)
+	return function(_context, player, ...: number)
+		local number = ...
+		if number < min or number > max then
+			Logger.Warn(("%s number is higher or lower than can be"):format(player.Name), self.Settings.Logging)
 			return false, "Range"
 		end
 		return true, "Range"
 	end
 end
 
-function Middleware.Context(data: any, container: string): (Context, Player, any) -> (boolean, string?)
-	return function(context, _player, ...)
-		context.Data[container] = data
-		return true, "Context"
-	end
-end
-
-function Middleware.Custom(callback, additionalData: {}?): ()
+function Middleware:Custom(callback, additionalData: {}?): ()
 	return function(context: Context, player: Player, ...: any): boolean
 		return callback(context, player, additionalData, ...)
 	end
