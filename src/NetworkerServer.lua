@@ -85,6 +85,7 @@ local References = {
 	RequestEvent = nil,
 }
 
+local INITIATED: boolean = false
 local STARTED: boolean = false
 
 local function createGlobalMiddlewares()
@@ -299,6 +300,10 @@ local function RunCallback(
 end
 
 function Network:Init(): boolean
+	if INITIATED then
+		self.Logger.Warn("[Networker] Networker cannot be initialized multiple times", self.Settings.Logging)
+		return true
+	end
 	References.RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
 	if not References.RemotesFolder then
 		References.RemotesFolder = Instance.new("Folder")
@@ -329,10 +334,15 @@ function Network:Init(): boolean
 		References.RequestEvent.Name = "RequestEvent"
 		References.RequestEvent.Parent = References.RequestFolder
 	end
+	INITIATED = true
 	return true
 end
 
 function Network:Start(): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if self:IsStarted() then
 		self.Logger.Warn("[Networker] Networker cannot be run multiple times", self.Settings.Logging)
 		return
@@ -361,9 +371,13 @@ function Network:IsStarted(): boolean
 end
 
 function Network:IsRegistered(name: string, t: string): boolean?
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
-		return false
+		warn("Networker didn't launch. Call Network:Start() first.")
+		return
 	end
 	local Remotes
 	if not t then
@@ -391,8 +405,12 @@ function Network:IsRegistered(name: string, t: string): boolean?
 end
 
 function Network:Register(name: string, middlewares: Middleware, callback: Callback): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	if self.Remotes[name] then
@@ -410,8 +428,12 @@ function Network:Register(name: string, middlewares: Middleware, callback: Callb
 end
 
 function Network:FireClient(player: Player, name: string, ...: any): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local data = self.Remotes[name]
@@ -431,8 +453,12 @@ function Network:FireClient(player: Player, name: string, ...: any): ()
 end
 
 function Network:FireAllClients(name: string, ...: any): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local data = self.Remotes[name]
@@ -452,8 +478,12 @@ function Network:FireAllClients(name: string, ...: any): ()
 end
 
 function Network:RegisterFunction(name: string, middlewares: Middleware, callback: Callback): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	if self.RemoteFunctions[name] then
@@ -475,8 +505,12 @@ function Network:RegisterFunction(name: string, middlewares: Middleware, callbac
 end
 
 function Network:InvokeClient(player: Player, name: string, ...: any): (boolean?, any?)
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	if not self.Settings.ClientToServerFunction then
@@ -497,8 +531,12 @@ function Network:InvokeClient(player: Player, name: string, ...: any): (boolean?
 end
 
 function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: Middleware, callback: Callback): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	if self.Requests[name] then
@@ -516,8 +554,12 @@ function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: 
 end
 
 function Network:Destroy(name: string, t: string): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local Remotes
@@ -549,6 +591,6 @@ function Network:Destroy(name: string, t: string): ()
 			event:Destroy()
 		end
 	end
-	self.Logger.Print(("%s (%s) deleted"):format(name, t), self.Settings.Logging)
+	self.Logger.Print(("[Networker] %s (%s) deleted"):format(name, t), self.Settings.Logging)
 end
 return Network :: NetworkerServer

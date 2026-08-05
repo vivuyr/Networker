@@ -42,12 +42,17 @@ local References = {
 	RequestEvent = nil,
 }
 
-local STARTED = false
+local INITIATED: boolean = false
+local STARTED: boolean = false
 
 local PendingRequests = {}
 local CurrentRequestId: number = 0
 
 function Network:Init(): boolean
+	if INITIATED then
+		self.Logger.Warn("[Networker] Networker cannot be initialized multiple times", self.Settings.Logging)
+		return true
+	end
 	local ready = true
 	References.RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
 	if not References.RemotesFolder then
@@ -136,6 +141,10 @@ function Network:Init(): boolean
 end
 
 function Network:Start(): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if self:IsStarted() then
 		self.Logger.Warn("[Networker] Networker cannot be run multiple times", self.Settings.Logging)
 		return
@@ -166,8 +175,12 @@ function Network:IsStarted(): boolean
 end
 
 function Network:On(name: string, callback: Callback): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local remote = References.EventsFolder:FindFirstChild(name)
@@ -187,8 +200,12 @@ function Network:On(name: string, callback: Callback): ()
 end
 
 function Network:FireServer(name: string, ...: any): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local remote = References.EventsFolder:FindFirstChild(name)
@@ -202,8 +219,12 @@ function Network:FireServer(name: string, ...: any): ()
 end
 
 function Network:InvokeServer(name: string, ...: any): (boolean?, any?)
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local remoteFunction = References.FunctionsFolder:FindFirstChild(name)
@@ -216,8 +237,12 @@ function Network:InvokeServer(name: string, ...: any): (boolean?, any?)
 end
 
 function Network:OnServerInvoke(name: string, callback: Callback): ()
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local remoteFunction = References.FunctionsFolder:FindFirstChild(name)
@@ -237,8 +262,12 @@ function Network:OnServerInvoke(name: string, callback: Callback): ()
 end
 
 function Network:Request(name: string, counter: number?, ...: any): any
+	if not INITIATED then
+		warn("[Networker] Networker is not initialized. Call Network:Init() first.")
+		return
+	end
 	if not self:IsStarted() then
-		warn("Networker didn't launch")
+		warn("Networker didn't launch. Call Network:Start() first.")
 		return
 	end
 	local bindable = Instance.new("BindableEvent")

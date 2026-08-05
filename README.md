@@ -21,8 +21,13 @@ Install the Wally package:
 
 ```toml
 [dependencies]
-Networker = "vivuyr/networker@0.1.0"
+Networker = "vivuyr/networker@1.1.0"
 ```
+
+> [!WARNING]
+> Versions older than **1.1.0** contains critical issues and is **not recommended**.
+>
+> Please use **1.1.0** or later.
 
 Or place the server, client, and shared modules in locations that match the library's module references. The included Rojo project maps `Shared` to `ReplicatedStorage.Shared`, server modules to `ServerScriptService.Server`, and client modules to `StarterPlayerScripts.Client`.
 
