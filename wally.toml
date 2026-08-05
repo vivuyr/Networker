@@ -1,7 +1,16 @@
 [package]
-name = "asus/networker"
+name = "vivuyr/networker"
 version = "0.1.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 
-[dependencies]
+license = "MIT"
+authors = ["vivuyr"]
+
+description = "A lightweight networking library for Roblox."
+
+exclude = [
+    ".gitignore",
+    "docs",
+    ".github",
+]
