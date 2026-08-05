@@ -136,7 +136,7 @@ function Network:Init(): boolean
 			return false
 		end
 	end
-
+	INITIATED = true
 	return true
 end
 
