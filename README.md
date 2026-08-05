@@ -75,7 +75,9 @@ end
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
+- [Github](https://github.com/vivuyr/Networker)
+
+- [Getting started](https://github.com/vivuyr/Networker/blob/master/docs/getting-started.md)
 - [Server API](docs/server/Init.md)
 - [Server settings and defaults](docs/server/Settings.md)
 - [Client API](docs/client/Init.md)
