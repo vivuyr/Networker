@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Logger = require(ReplicatedStorage.Shared.Logger)
+local Logger = require(script.Parent.Logger)
 
 export type Context = {
 	Data: { [string]: any },

@@ -1,5 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Logger = require(ReplicatedStorage.Shared.Logger)
+local Logger = require(script.Parent.Logger)
 local Middleware = require(script.Parent.Middleware)
 
 export type Remote = RemoteEvent | RemoteFunction
