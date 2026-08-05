@@ -1,26 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Network = {
-	Remotes = {},
-	RemoteFunctions = {},
-	Requests = {},
-	Middleware = require(script.Parent.Middleware),
-	GlobalMiddlewareDefinitions = {},
-	Logger = require(ReplicatedStorage.Shared.Logger),
-	Settings = {
-		ClientToServerFunction = false,
-		FirstGlobalMiddleware = true,
-		Logging = false,
-	},
-}
-
-local References = {
-	RemotesFolder = nil,
-	EventsFolder = nil,
-	FunctionsFolder = nil,
-	RequestFolder = nil,
-	RequestEvent = nil,
-}
+local Logger = require(ReplicatedStorage.Shared.Logger)
+local Middleware = require(script.Parent.Middleware)
 
 export type Remote = RemoteEvent | RemoteFunction
 
@@ -33,6 +13,7 @@ export type Callback = (Context, Player, any) -> any
 
 type RequestData = {
 	Name: string,
+	GlobalMiddlewares: { [string | number]: (any) -> any },
 	Middlewares: {},
 	Callback: Callback,
 	Error: string?,
@@ -41,6 +22,70 @@ type RequestData = {
 type Request = { [string]: RequestData }
 
 type Middleware = { Global: { UseAll: boolean?, Disable: { string? | number? }? }?, Middlewares: {}? } | {}
+
+type GlobalMiddlewareDefinitions = { [string | number]: { Factory: (nil) -> any, Args: {} } }
+
+type RemoteData = { Remote: Remote, GlobalMiddlewares: { [string | number]: (any) -> any } }
+
+export type LoggerType = typeof(Logger)
+export type MiddlewareModule = typeof(Middleware)
+
+export type NetworkerServer = {
+	Remotes: { [string]: RemoteData },
+	RemoteFunctions: { [string]: RemoteData },
+	Requests: Request,
+	Middleware: MiddlewareModule,
+	GlobalMiddlewareDefinitions: GlobalMiddlewareDefinitions,
+	Logger: LoggerType,
+	Settings: {
+		ClientToServerFunction: boolean,
+		FirstGlobalMiddleware: boolean,
+		Logging: boolean,
+		PcallMiddlewares: boolean,
+	},
+	Init: (self: NetworkerServer) -> boolean,
+	Start: (self: NetworkerServer) -> (),
+	IsStarted: (self: NetworkerServer) -> boolean,
+	IsRegistered: (self: NetworkerServer, name: string, t: string) -> boolean?,
+	Register: (self: NetworkerServer, name: string, middlewares: Middleware, callback: Callback) -> (),
+	FireClient: (self: NetworkerServer, player: Player, name: string, any) -> (),
+	FireAllClients: (self: NetworkerServer, name: string, any) -> (),
+	RegisterFunction: (self: NetworkerServer, name: string, middlewares: Middleware, callback: Callback) -> (),
+	InvokeClient: (self: NetworkerServer, player: Player, name: string, any) -> any,
+	RegisterRequest: (
+		self: NetworkerServer,
+		name: string,
+		errorInfo: string?,
+		middlewares: Middleware,
+		callback: Callback
+	) -> (),
+	Destroy: (self: NetworkerServer, name: string, t: string) -> (),
+}
+
+local Network = {
+	Remotes = {},
+	RemoteFunctions = {},
+	Requests = {},
+	Middleware = Middleware,
+	GlobalMiddlewareDefinitions = {},
+	Logger = Logger,
+	Settings = {
+		ClientToServerFunction = false,
+		FirstGlobalMiddleware = true,
+		Logging = false,
+		PcallMiddlewares = true,
+	},
+}
+
+local References = {
+	RemotesFolder = nil,
+	EventsFolder = nil,
+	FunctionsFolder = nil,
+	RequestFolder = nil,
+	RequestEvent = nil,
+}
+
+local STARTED: boolean = false
 
 local function createGlobalMiddlewares()
 	local globals = {}
@@ -59,7 +104,7 @@ local function globalMiddlewares(
 	...: any
 )
 	local Remotes
-	if t == "Remote" then
+	if t == "RemoteEvent" then
 		Remotes = Network.Remotes
 	elseif t == "RemoteFunction" then
 		Remotes = Network.RemoteFunctions
@@ -98,17 +143,38 @@ local function globalMiddlewares(
 				end
 			end
 		end
-		local ok, middleName = global(context, player, ...)
+		if Network.Settings.PcallMiddlewares then
+			local called, ok, middleName = pcall(global, context, player, ...)
 
-		if not ok then
-			if not middleName then
-				middleName = ""
+			if not called then
+				if not middleName then
+					middleName = ""
+				end
+				Network.Logger.Warn(
+					("[Networker][%s] %s's (%s) middleware (%s) failed:\n%s"):format(
+						player.Name,
+						name,
+						t,
+						middleName,
+						ok
+					),
+					Network.Settings.Logging
+				)
+				return
 			end
-			Network.Logger.Warn(
-				("[Networker][%s] %s's (%s) GlobalMiddleware (%s) failed"):format(player.Name, name, t, middleName),
-				Network.Settings.Logging
-			)
-			return
+		else
+			local ok, middleName = global(context, player, ...)
+
+			if not ok then
+				if not middleName then
+					middleName = ""
+				end
+				Network.Logger.Warn(
+					("[Networker][%s] %s's (%s) GlobalMiddleware (%s) failed"):format(player.Name, name, t, middleName),
+					Network.Settings.Logging
+				)
+				return
+			end
 		end
 	end
 	return true
@@ -124,17 +190,38 @@ local function normalMiddlewares(
 )
 	local middle = middlewares["Middlewares"] or middlewares
 	for _, middleware in ipairs(middle) do
-		local ok, middleName = middleware(context, player, ...)
+		if Network.Settings.PcallMiddlewares then
+			local called, ok, middleName = pcall(middleware, context, player, ...)
 
-		if not ok then
-			if not middleName then
-				middleName = ""
+			if not called then
+				if not middleName then
+					middleName = ""
+				end
+				Network.Logger.Warn(
+					("[Networker][%s] %s's (%s) middleware (%s) failed:\n%s"):format(
+						player.Name,
+						name,
+						t,
+						middleName,
+						ok
+					),
+					Network.Settings.Logging
+				)
+				return
 			end
-			Network.Logger.Warn(
-				("[Networker][%s] %s's (%s) middleware (%s) failed"):format(player.Name, name, t, middleName),
-				Network.Settings.Logging
-			)
-			return
+		else
+			local ok, middleName = middleware(context, player, ...)
+
+			if not ok then
+				if not middleName then
+					middleName = ""
+				end
+				Network.Logger.Warn(
+					("[Networker][%s] %s's (%s) middleware (%s) failed"):format(player.Name, name, t, middleName),
+					Network.Settings.Logging
+				)
+				return
+			end
 		end
 	end
 	return true
@@ -187,6 +274,7 @@ end
 
 local function RunCallback(
 	remote: Remote | Request,
+	Type: string,
 	player: Player,
 	middlewares: Middleware,
 	callback: Callback,
@@ -194,10 +282,6 @@ local function RunCallback(
 	...: any
 ): (boolean, any)
 	local name = remote.Name
-	local Type = type(remote)
-	if Type ~= "RemoteEvent" and Type ~= "RemoteFunction" then
-		Type = "Request"
-	end
 	local context = RunMiddlewares(remote, Type, player, middlewares, ...)
 	if not context then
 		return false, nil
@@ -205,19 +289,14 @@ local function RunCallback(
 
 	local success, result = pcall(callback, context, player, ...)
 	if not success then
-		result = errorInfo
+		result = errorInfo or ""
 		Network.Logger.Warn(
 			("[Networker][%s] %s (%s) failed:\n%s"):format(player.Name, name, Type, result),
 			Network.Settings.Logging
 		)
-		return false, nil
 	end
 	return success, result
 end
-
---[[
-Init() Check every thing in References and if not exist create
-]]
 
 function Network:Init(): boolean
 	References.RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
@@ -252,11 +331,14 @@ function Network:Init(): boolean
 	end
 	return true
 end
---[[
-Start() activate Networker's OnServerEvents
-]]
+
 function Network:Start(): ()
-	self.Middleware.Start()
+	if self:IsStarted() then
+		self.Logger.Warn("[Networker] Networker cannot be run multiple times", self.Settings.Logging)
+		return
+	end
+	STARTED = true
+	self.Middleware:Start()
 	References.RequestEvent.OnServerEvent:Connect(function(player: Player, name: string, requestId: number, ...: any)
 		if not Network.Requests[name] then
 			References.RequestEvent:FireClient(player, requestId, false)
@@ -265,19 +347,41 @@ function Network:Start(): ()
 
 		local request = Network.Requests[name]
 
-		local success, result = RunCallback(request, player, request.Middlewares, request.Callback, request.Error, ...)
+		local success, result =
+			RunCallback(request, "Request", player, request.Middlewares, request.Callback, request.Error, ...)
 		References.RequestEvent:FireClient(player, requestId, success, result)
 	end)
 end
 
-function Network:IsRegistered(name, t)
+function Network:IsStarted(): boolean
+	if STARTED then
+		return true
+	end
+	return false
+end
+
+function Network:IsRegistered(name: string, t: string): boolean?
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return false
+	end
 	local Remotes
+	if not t then
+		self.Logger.Warn(
+			("[Networker] Type is not specified and %s cant be deleted"):format(name),
+			self.Settings.Logging
+		)
+		return
+	end
 	if t == "Remote" then
 		Remotes = self.Remotes
 	elseif t == "RemoteFunction" then
 		Remotes = self.RemoteFunctions
 	elseif t == "Request" then
 		Remotes = self.Requests
+	else
+		self.Logger.Warn(("[Networker] %s Type is wrong"):format(name), self.Settings.Logging)
+		return
 	end
 	local remote = Remotes[name]
 	if not remote then
@@ -287,6 +391,10 @@ function Network:IsRegistered(name, t)
 end
 
 function Network:Register(name: string, middlewares: Middleware, callback: Callback): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	if self.Remotes[name] then
 		self.Logger.Warn(("[Networker] Remote '%s' already exists."):format(name), Network.Settings.Logging)
 		return
@@ -297,11 +405,15 @@ function Network:Register(name: string, middlewares: Middleware, callback: Callb
 	local global = createGlobalMiddlewares()
 	self.Remotes[name] = { Remote = remote, GlobalMiddlewares = global }
 	remote.OnServerEvent:Connect(function(player: Player, ...: any)
-		local _success, _result = RunCallback(remote, player, middlewares, callback, nil, ...)
+		local _success, _result = RunCallback(remote, "RemoteEvent", player, middlewares, callback, nil, ...)
 	end)
 end
 
 function Network:FireClient(player: Player, name: string, ...: any): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	local data = self.Remotes[name]
 	local remote = data and data.Remote
 
@@ -319,6 +431,10 @@ function Network:FireClient(player: Player, name: string, ...: any): ()
 end
 
 function Network:FireAllClients(name: string, ...: any): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	local data = self.Remotes[name]
 	local remote = data and data.Remote
 
@@ -336,6 +452,10 @@ function Network:FireAllClients(name: string, ...: any): ()
 end
 
 function Network:RegisterFunction(name: string, middlewares: Middleware, callback: Callback): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	if self.RemoteFunctions[name] then
 		self.Logger.Warn(("[Networker] RemoteFunction '%s' already exists."):format(name), self.Settings.Logging)
 		return
@@ -348,13 +468,17 @@ function Network:RegisterFunction(name: string, middlewares: Middleware, callbac
 	self.RemoteFunctions[name] = { Remote = remoteFunction, GlobalMiddlewares = global }
 
 	remoteFunction.OnServerInvoke = function(player: Player, ...: any)
-		local _success, result = RunCallback(remoteFunction, player, middlewares, callback, nil, ...)
+		local success, result = RunCallback(remoteFunction, "RemoteFunction", player, middlewares, callback, nil, ...)
 
-		return result
+		return success, result
 	end
 end
 
-function Network:InvokeClient(player: Player, name: string, ...: any): any
+function Network:InvokeClient(player: Player, name: string, ...: any): (boolean?, any?)
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	if not self.Settings.ClientToServerFunction then
 		warn("The Client to Server option is disabled. Consider enabling it as it is dangerous!!!")
 		return
@@ -362,7 +486,7 @@ function Network:InvokeClient(player: Player, name: string, ...: any): any
 	local data = self.RemoteFunctions[name]
 	local remoteFunction = data and data.Remote
 	if not remoteFunction then
-		remoteFunction = References.EventsFolder:FindFirstChild(name)
+		remoteFunction = References.FunctionsFolder:FindFirstChild(name)
 		if not remoteFunction then
 			self.Logger.Warn(("[Networker] Function '%s' not exists."):format(name), self.Settings.Logging)
 			return
@@ -373,6 +497,10 @@ function Network:InvokeClient(player: Player, name: string, ...: any): any
 end
 
 function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: Middleware, callback: Callback): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	if self.Requests[name] then
 		self.Logger.Warn(("[Networker] Request '%s' already exists."):format(name), self.Settings.Logging)
 		return
@@ -387,9 +515,20 @@ function Network:RegisterRequest(name: string, errorInfo: string?, middlewares: 
 	}
 end
 
-function Network:Destroy(name: string, t: string)
+function Network:Destroy(name: string, t: string): ()
+	if not self:IsStarted() then
+		warn("Networker didn't launch")
+		return
+	end
 	local Remotes
 	local Folder
+	if not t then
+		self.Logger.Warn(
+			("[Networker] Type is not specified and %s cant be deleted"):format(name),
+			self.Settings.Logging
+		)
+		return
+	end
 	if t == "Remote" then
 		Remotes = self.Remotes
 		Folder = References.EventsFolder
@@ -398,17 +537,18 @@ function Network:Destroy(name: string, t: string)
 		Folder = References.FunctionsFolder
 	elseif t == "Request" then
 		Remotes = self.Requests
-	end
-	local data = Remotes[name]
-	local remote = data and data.Remote
-	if not remote then
+	else
+		self.Logger.Warn(("[Networker] %s Type is wrong"):format(name), self.Settings.Logging)
 		return
 	end
+
 	Remotes[name] = nil
 	if Folder then
 		local event = Folder:FindFirstChild(name)
-		event:Destroy()
+		if event then
+			event:Destroy()
+		end
 	end
 	self.Logger.Print(("%s (%s) deleted"):format(name, t), self.Settings.Logging)
 end
-return Network
+return Network :: NetworkerServer

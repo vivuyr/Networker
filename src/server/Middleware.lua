@@ -1,9 +1,31 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Logger = require(ReplicatedStorage.Shared.Logger)
-local Middleware = { Settings = { Logging = nil } }
 
-local Connections = {
+export type Context = {
+	Data: { [string]: any },
+	StartTime: number,
+}
+
+type Callback = (Context, Player, ...any) -> any
+export type MiddlewareCallback = (Context, Player, ...any) -> (boolean, string?)
+type CustomCallback = (Context, Player, {}?, ...any) -> (boolean, string?)
+type PlayerConnection = { [Player]: number }
+
+export type MiddlewareType = {
+	Settings: { Logging: boolean },
+	Start: () -> (),
+	RateLimit: (self: MiddlewareType, limit: number) -> MiddlewareCallback?,
+	Cooldown: (self: MiddlewareType, cooldown: number) -> MiddlewareCallback?,
+	Resolve: (self: MiddlewareType, callback: Callback, container: string) -> MiddlewareCallback,
+	Types: (self: MiddlewareType, argsTypes: {}) -> MiddlewareCallback,
+	Range: (self: MiddlewareType, min: number, max: number) -> MiddlewareCallback,
+	Custom: (self: MiddlewareType, callback: CustomCallback, additionalData: {}?) -> MiddlewareCallback,
+}
+
+local Middleware = { Settings = { Logging = false } }
+
+local Connections: { RateLimit: { [number]: PlayerConnection }, Cooldown: { [number]: PlayerConnection } } = {
 	RateLimit = {},
 	Cooldown = {},
 }
@@ -13,28 +35,21 @@ local Ids = {
 	Cooldown = 1,
 }
 
-type Context = {
-	Data: {},
-	StartTime: number,
-}
-
-type Callback = (Context, Player, any) -> any
-
-function Middleware.Start(): ()
+function Middleware:Start(): ()
 	Players.PlayerRemoving:Connect(function(leavingPlayer)
 		for _, data in pairs(Connections) do
 			for _, connection in pairs(data) do
-				for _, findedPlayer in pairs(connection) do
-					if findedPlayer == leavingPlayer then
-						connection[leavingPlayer] = nil
-					end
-				end
+				connection[leavingPlayer] = nil
 			end
 		end
 	end)
 end
 
-function Middleware:RateLimit(limit: number): (Context, Player, any) -> (boolean, string?)
+function Middleware:RateLimit(limit: number): MiddlewareCallback?
+	if limit <= 0 then
+		warn(("Wrong RateLimit: %s"):format(tostring(limit)))
+		return
+	end
 	local id = Ids.RateLimit
 	Ids.RateLimit += 1
 	Connections.RateLimit[id] = {}
@@ -53,7 +68,11 @@ function Middleware:RateLimit(limit: number): (Context, Player, any) -> (boolean
 	end
 end
 
-function Middleware:Cooldown(cooldown: number): (Context, Player, any) -> (boolean, string?)
+function Middleware:Cooldown(cooldown: number): MiddlewareCallback?
+	if cooldown <= 0 then
+		warn(("Wrong cooldown: %s"):format(tostring(cooldown)))
+		return
+	end
 	local id = Ids.Cooldown
 	Ids.Cooldown += 1
 	Connections.Cooldown[id] = {}
@@ -69,7 +88,7 @@ function Middleware:Cooldown(cooldown: number): (Context, Player, any) -> (boole
 	end
 end
 
-function Middleware:Resolve(callback: Callback, container: string): (Context, Player, any) -> (boolean, string?)
+function Middleware:Resolve(callback: Callback, container: string): MiddlewareCallback
 	return function(context, player, ...)
 		local data = callback(context, player, ...)
 		if not data then
@@ -81,10 +100,10 @@ function Middleware:Resolve(callback: Callback, container: string): (Context, Pl
 	end
 end
 
-function Middleware:Types(argsTypes: {}): (Context, Player, any) -> (boolean, string?)
+function Middleware:Types(argsTypes: {}): MiddlewareCallback
 	return function(_context, player, ...)
 		local args = { ... }
-		for i, arg in ipairs(args) do
+		for i, _ in ipairs(argsTypes) do
 			if type(args[i]) ~= argsTypes[i] then
 				Logger.Warn(("%s type %s is wrong"):format(player.Name, i), self.Settings.Logging)
 				return false, "Types"
@@ -94,10 +113,14 @@ function Middleware:Types(argsTypes: {}): (Context, Player, any) -> (boolean, st
 	end
 end
 
-function Middleware:Range(min: number, max: number): (Context, Player, any) -> (boolean, string?)
-	return function(_context, player, ...: number)
-		local number = ...
-		if number < min or number > max then
+function Middleware:Range(min: number, max: number): MiddlewareCallback
+	return function(_context, player, ...)
+		local value = ...
+		if type(value) ~= "number" then
+			Logger.Warn(("%s argument isn't number"):format(player.Name), self.Settings.Logging)
+			return false, "Range"
+		end
+		if value < min or value > max then
 			Logger.Warn(("%s number is higher or lower than can be"):format(player.Name), self.Settings.Logging)
 			return false, "Range"
 		end
@@ -105,10 +128,10 @@ function Middleware:Range(min: number, max: number): (Context, Player, any) -> (
 	end
 end
 
-function Middleware:Custom(callback, additionalData: {}?): ()
-	return function(context: Context, player: Player, ...: any): boolean
+function Middleware:Custom(callback: CustomCallback, additionalData: {}?): MiddlewareCallback
+	return function(context: Context, player: Player, ...: any)
 		return callback(context, player, additionalData, ...)
 	end
 end
 
-return Middleware
+return Middleware :: MiddlewareType
