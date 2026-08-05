@@ -21,7 +21,7 @@ Install the Wally package:
 
 ```toml
 [dependencies]
-Networker = "asus/networker@0.1.0"
+Networker = "vivuyr/networker@0.1.0"
 ```
 
 Or place the server, client, and shared modules in locations that match the library's module references. The included Rojo project maps `Shared` to `ReplicatedStorage.Shared`, server modules to `ServerScriptService.Server`, and client modules to `StarterPlayerScripts.Client`.
