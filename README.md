@@ -82,7 +82,9 @@ end
 
 ## License
 
-No license file is included in this repository. Add a license before distributing or reusing Networker under defined terms.
+## License
+
+This project is licensed under the MIT License.
 =======
 
 >>>>>>> 07e128fa82ff09dde02628875f20e2461f1e8045
