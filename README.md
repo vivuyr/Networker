@@ -17,11 +17,13 @@ Networker keeps remote creation and server-side validation in one place. It prov
 
 ## Installation
 
+⚠️ Roblox Studio installation is currently unavailable.
+
 Install the Wally package:
 
 ```toml
 [dependencies]
-Networker = "vivuyr/networker@1.1.0"
+Networker = "vivuyr/networker@1.1.3"
 ```
 
 > [!WARNING]
@@ -78,14 +80,14 @@ end
 - [Github](https://github.com/vivuyr/Networker)
 
 - [Getting started](https://github.com/vivuyr/Networker/blob/master/docs/getting-started.md)
-- [Server API](docs/server/Init.md)
-- [Server settings and defaults](docs/server/Settings.md)
-- [Client API](docs/client/Init.md)
-- [Middleware](docs/middleware/Types.md)
-- [Request system](docs/requests.md)
-- [Context](docs/context.md) and [Logger](docs/logger.md)
-- [Best practices](docs/best-practices.md)
-- [Examples](docs/examples/README.md)
+- [Server API](https://github.com/vivuyr/Networker/blob/master/docs/server/Init.md)
+- [Server settings and defaults](https://github.com/vivuyr/Networker/blob/master/docs/server/Settings.md)
+- [Client API](https://github.com/vivuyr/Networker/blob/master/docs/client/Init.md)
+- [Middleware](https://github.com/vivuyr/Networker/blob/master/docs/middleware/Types.md)
+- [Request system](https://github.com/vivuyr/Networker/blob/master/docs/requests.md)
+- [Context](https://github.com/vivuyr/Networker/blob/master/docs/context.md) and [Logger](https://github.com/vivuyr/Networker/blob/master/docs/logger.md)
+- [Best practices](https://github.com/vivuyr/Networker/blob/master/docs/best-practices.md)
+- [Examples](https://github.com/vivuyr/Networker/blob/master/docs/examples/README.md)
 
 ## License
 
