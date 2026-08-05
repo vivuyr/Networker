@@ -9,8 +9,5 @@ authors = ["vivuyr"]
 
 description = "A lightweight networking library for Roblox."
 
-exclude = [
-    ".gitignore",
-    "docs",
-    ".github",
-]
+exclude = ["**"]
+include = ["src", "src/*", "default.project.json", "wally.lock", "wally.toml", "LICENSE"]

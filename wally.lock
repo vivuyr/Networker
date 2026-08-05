@@ -3,6 +3,6 @@
 registry = "test"
 
 [[package]]
-name = "asus/networker"
+name = "vivuyr/networker"
 version = "0.1.0"
 dependencies = []
